@@ -1,6 +1,5 @@
 use anyhow::{bail, Result};
-use std::fs::File;
-use std::io::prelude::*;
+use codecrafters_sqlite::db::Db;
 
 fn main() -> Result<()> {
     let args = std::env::args().collect::<Vec<_>>();
@@ -13,15 +12,7 @@ fn main() -> Result<()> {
     let command = &args[2];
     match command.as_str() {
         ".dbinfo" => {
-            let mut file = File::open(&args[1])?;
-            let mut header = [0; 100];
-            file.read_exact(&mut header)?;
-
-            let page_size = u16::from_be_bytes([header[16], header[17]]);
-
-            eprintln!("Logs from your program will appear here!");
-
-            println!("database page size: {}", page_size);
+            let _db = Db::from_file(&args[1])?;
         }
         _ => bail!("Missing or invalid command passed: {}", command),
     }
