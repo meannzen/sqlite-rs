@@ -12,48 +12,53 @@ fn main() {
     }
     let path = &args[1];
 
-    if args[2] == ".dbinfo" {
-        let mut file = File::open(path).unwrap();
-        let mut buffer = [0; 100];
-        file.read_exact(&mut buffer).unwrap();
-        let page_size = u16::from_be_bytes(buffer[16..18].try_into().unwrap());
-        println!("database page size: {}", page_size);
-        let mut buffer = vec![0; page_size as usize];
-        file.seek(SeekFrom::Start(0)).unwrap();
-        file.read_exact(&mut buffer).unwrap();
-        let cell_count = u16::from_be_bytes(buffer[103..105].try_into().unwrap());
-        println!("number of tables: {}", cell_count);
-        return;
-    }
+    let command = args[2].as_str();
 
-    if args[2] != ".tables" {
-        return;
-    }
+    match command {
+        ".dbinfo" => {
+            let mut file = File::open(path).unwrap();
+            let mut buffer = [0; 100];
+            file.read_exact(&mut buffer).unwrap();
+            let page_size = u16::from_be_bytes(buffer[16..18].try_into().unwrap());
+            println!("database page size: {}", page_size);
+            let mut buffer = vec![0; page_size as usize];
+            file.seek(SeekFrom::Start(0)).unwrap();
+            file.read_exact(&mut buffer).unwrap();
+            let cell_count = u16::from_be_bytes(buffer[103..105].try_into().unwrap());
+            println!("number of tables: {}", cell_count);
+        }
 
-    let data = fs::read(path).unwrap();
-    let page_size = u16::from_be_bytes([data[16], data[17]]) as usize;
-    let page_size = if page_size == 1 { 65536 } else { page_size };
-    let page = &data[0..page_size];
+        ".tables" => {
+            let data = fs::read(path).unwrap();
+            let page_size = u16::from_be_bytes([data[16], data[17]]) as usize;
+            let page_size = if page_size == 1 { 65536 } else { page_size };
+            let page = &data[0..page_size];
 
-    let mut tables = Vec::new();
-    let header_offset = 100;
-    let cell_count =
-        u16::from_be_bytes([page[header_offset + 3], page[header_offset + 4]]) as usize;
+            let mut tables = Vec::new();
+            let header_offset = 100;
+            let cell_count =
+                u16::from_be_bytes([page[header_offset + 3], page[header_offset + 4]]) as usize;
 
-    for i in 0..cell_count {
-        let ptr_offset = header_offset + 8 + i * 2;
-        let cell_offset = u16::from_be_bytes([page[ptr_offset], page[ptr_offset + 1]]) as usize;
+            for i in 0..cell_count {
+                let ptr_offset = header_offset + 8 + i * 2;
+                let cell_offset =
+                    u16::from_be_bytes([page[ptr_offset], page[ptr_offset + 1]]) as usize;
 
-        if let Some(name) = parse_cell(&page[cell_offset..]) {
-            if !name.starts_with("sqlite_") {
-                tables.push(name);
+                if let Some(name) = parse_cell(&page[cell_offset..]) {
+                    if !name.starts_with("sqlite_") {
+                        tables.push(name);
+                    }
+                }
+            }
+
+            tables.sort_unstable();
+            if !tables.is_empty() {
+                println!("{}", tables.join(" "));
             }
         }
-    }
-
-    tables.sort_unstable();
-    if !tables.is_empty() {
-        println!("{}", tables.join(" "));
+        string => {
+            dbg!(string);
+        }
     }
 }
 
