@@ -1,4 +1,22 @@
-use crate::{ast::*, lexer::Lexer, token::Token};
+pub mod ast;
+pub mod lexer;
+pub mod token;
+
+use self::{ast::*, lexer::Lexer, token::Token};
+use thiserror::Error;
+
+#[derive(Debug, Error, PartialEq)]
+pub enum ParseError {
+    #[error("Expected {expected}, but got {found:?}")]
+    UnexpectedToken {
+        expected: String,
+        found: Option<Token>,
+    },
+    #[error("Unexpected end of input")]
+    UnexpectedEof,
+    #[error("Invalid integer literal: {0}")]
+    InvalidInteger(String),
+}
 
 pub struct Parser {
     lexer: Lexer,
@@ -36,15 +54,21 @@ impl Parser {
         &self.current
     }
 
-    pub fn parse_select(&mut self) -> Result<Select, String> {
+    pub fn parse_select(&mut self) -> Result<Select, ParseError> {
         if !self.expect(Token::Select) {
-            return Err("Expected SELECT".into());
+            return Err(ParseError::UnexpectedToken {
+                expected: "SELECT".to_string(),
+                found: self.current.clone(),
+            });
         }
 
         let columns = self.parse_columns()?;
 
         if !self.expect(Token::From) {
-            return Err("Expected FROM".into());
+            return Err(ParseError::UnexpectedToken {
+                expected: "FROM".to_string(),
+                found: self.current.clone(),
+            });
         }
 
         let table = self.expect_identifier("Expected table name")?;
@@ -79,7 +103,12 @@ impl Parser {
                     self.next();
                     Some(n)
                 }
-                _ => return Err("Expected integer after LIMIT".into()),
+                _ => {
+                    return Err(ParseError::UnexpectedToken {
+                        expected: "integer".to_string(),
+                        found: self.current.clone(),
+                    })
+                }
             };
         }
 
@@ -93,7 +122,7 @@ impl Parser {
         })
     }
 
-    fn parse_columns(&mut self) -> Result<Vec<Expr>, String> {
+    fn parse_columns(&mut self) -> Result<Vec<Expr>, ParseError> {
         let mut cols = Vec::new();
 
         loop {
@@ -118,14 +147,19 @@ impl Parser {
         Ok(cols)
     }
 
-    fn parse_function_call(&mut self) -> Result<Expr, String> {
+    fn parse_function_call(&mut self) -> Result<Expr, ParseError> {
         let name = match self.current.take() {
             Some(Token::Count) => "COUNT".to_string(),
             Some(Token::Sum) => "SUM".to_string(),
             Some(Token::Avg) => "AVG".to_string(),
             Some(Token::Min) => "MIN".to_string(),
             Some(Token::Max) => "MAX".to_string(),
-            _ => return Err("Expected function".into()),
+            _ => {
+                return Err(ParseError::UnexpectedToken {
+                    expected: "function".to_string(),
+                    found: self.current.clone(),
+                })
+            }
         };
         self.next();
 
@@ -144,7 +178,7 @@ impl Parser {
         })
     }
 
-    fn parse_expr(&mut self) -> Result<Expr, String> {
+    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         let mut left = self.parse_primary()?;
 
         while matches!(
@@ -172,7 +206,7 @@ impl Parser {
         Ok(left)
     }
 
-    fn parse_primary(&mut self) -> Result<Expr, String> {
+    fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         match self.current.take() {
             Some(Token::Identifier(id)) => {
                 self.next();
@@ -199,21 +233,27 @@ impl Parser {
                 self.next();
                 Ok(Expr::Float(n))
             }
-            _ => Err(format!("Unexpected token: {:?}", self.current)),
+            _ => Err(ParseError::UnexpectedToken {
+                expected: "primary expression".to_string(),
+                found: self.current.clone(),
+            }),
         }
     }
 
-    fn expect_identifier(&mut self, msg: &str) -> Result<String, String> {
+    fn expect_identifier(&mut self, msg: &str) -> Result<String, ParseError> {
         match self.current.take() {
             Some(Token::Identifier(s)) => {
                 self.next();
                 Ok(s)
             }
-            _ => Err(msg.into()),
+            _ => Err(ParseError::UnexpectedToken {
+                expected: msg.to_string(),
+                found: self.current.clone(),
+            }),
         }
     }
 
-    fn parse_join(&mut self) -> Result<Join, String> {
+    fn parse_join(&mut self) -> Result<Join, ParseError> {
         let kind = if self.current == Some(Token::Left) {
             self.next();
             JoinKind::Left
@@ -240,7 +280,7 @@ impl Parser {
         })
     }
 
-    fn parse_order_by(&mut self) -> Result<Vec<(Expr, OrderDir)>, String> {
+    fn parse_order_by(&mut self) -> Result<Vec<(Expr, OrderDir)>, ParseError> {
         let mut items = Vec::new();
         loop {
             let expr = self.parse_primary()?;
