@@ -4,7 +4,6 @@ use std::env;
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
-        // ideally we would print a usage message here
         return Ok(());
     }
     let path = &args[1];
